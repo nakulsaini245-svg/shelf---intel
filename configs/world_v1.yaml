@@ -82,8 +82,8 @@ demand:
   dow_mult: [0.95, 0.95, 0.97, 1.00, 1.05, 1.12, 1.10]   # Mon..Sun
   period_weights: [0.08, 0.30, 0.30, 0.32]   # demand share in the 4 periods ending at each snapshot
   promo_display_lift: 1.10            # extra lift from promo visibility, on top of price elasticity
-  sov_eta: 0.25                       # demand response to relative change in brand ad share-of-voice
-  cross_elasticity_ratio: 0.5         # cross-price elasticity = ratio x own elasticity
+  sov_eta: 1.0                        # demand response to relative change in brand ad share-of-voice
+  cross_elasticity_ratio: 1.0         # cross-price elasticity = ratio x own elasticity (relative-price demand)
   demand_mult_clip: [0.2, 3.0]
   baseline_unlist_prob: 0.0005        # random one-day delisting of a SKU in a platform x pincode cell
   # Approximate dates, synthetic effect sizes. Known calendar => usable as a model covariate.
@@ -140,6 +140,50 @@ observation:
   evening_extra: 0.03                 # MNAR: extra failure probability at snapshots 3 and 4
   p_serviceability_error: 0.004       # transient false "unserviceable" response
   p_stale: 0.01                       # snapshot silently returns the previous snapshot's values
+
+# ---------------------------------------------------------------- planted incidents (E1..E10)
+# Each event gets a difficulty position d in [0,1] from `tiers` (assigned round-robin per type; 0 = easy,
+# 1 = hard). Every knob is an [easy, hard] pair, linearly interpolated at d. Easy = large, long,
+# spatially wide; hard = small, short, narrow or ambiguous. Events are placed so that no two share a
+# platform AND zone within `tail_days + min_gap_days` of each other (clean per-event attribution).
+# The plan depends only on (seed, config), never on how many days are simulated.
+events:
+  enabled: true
+  horizon_days: 90        # planning horizon; days beyond it are baseline-only
+  min_start_day: 10       # clean baseline prefix so detectors can warm up
+  tail_days: 5            # effects are measured until end_day + tail_days (stockouts outlast the cause)
+  min_gap_days: 2
+  tiers: [0.0, 0.5, 1.0]
+  # 29 planted incidents. E6 is a compound: it also writes two child rows (E6a undercut, E6b SoV surge).
+  counts: {E1: 3, E2: 4, E3: 4, E4: 3, E5: 3, E6: 3, E7: 2, E8: 3, E9: 2, E10: 2}
+  knobs:
+    # E1 regional supply shock: one platform, one zone; a share of that platform's dark stores in the
+    # zone receive only fill_mult of their inbound replenishment (per-store severity jittered +-store_jitter).
+    E1:  {duration: [6, 3],  fill_mult: [0.10, 0.60], store_share: [1.0, 0.5], store_jitter: [0.5, 0.5]}
+    # E2 single dark-store outage: stock lost on day 1 (severity) and inbound cut by severity for the window.
+    E2:  {duration: [3, 1],  severity: [1.0, 0.6]}
+    # E3 competitor price undercut: n_brands non-focal brands cut one subcategory's prices on one platform
+    # in n_zones zones; the cut ramps in over lag_days (the competitor reaction lag).
+    E3:  {duration: [8, 5],  cut_pct: [0.15, 0.06], n_brands: [2, 1], n_zones: [2, 1], lag_days: [2, 2]}
+    # E4 own promo ending (hard negative: explained by the OBSERVED promo flag): focal SKUs of one subcategory
+    # are on promo for promo_days, then demand dips by `dip` for dip_days (pantry loading).
+    E4:  {promo_days: [5, 4], depth: [0.18, 0.12], dip: [0.30, 0.12], dip_days: [4, 3], n_zones: [2, 1]}
+    # E5 competitor ad-SoV takeover: one non-focal brand's sponsored bid x bid_mult on one platform, n_zones zones.
+    E5:  {duration: [8, 5],  bid_mult: [6.0, 2.5], n_zones: [3, 1]}
+    # E6 compound: the SAME competitor undercuts (E6a) and surges ad bids (E6b) in the same zone/platform;
+    # E6b starts sov_offset_days after E6a.
+    E6:  {duration: [8, 6],  cut_pct: [0.14, 0.08], bid_mult: [5.0, 3.0], sov_offset_days: [0, 1]}
+    # E7 phantom stockout: stock exists but sku_share of a zone's SKUs are unavailable. visible_frac = share of
+    # affected cells shown as delisted ("unlisted"); the rest look exactly like stockouts (the ambiguity).
+    E7:  {duration: [4, 2],  sku_share: [0.5, 0.2], visible_frac: [1.0, 0.0]}
+    # E8 scrape blackout (hard negative): no world effect, scraper sees nothing for pincode_share of a zone.
+    E8:  {duration: [3, 1],  pincode_share: [0.8, 0.3]}
+    # E9 slow price drift: non-focal brands' prices in one subcategory on one platform drift down linearly
+    # by total_drift over the window, then snap back.
+    E9:  {duration: [24, 14], total_drift: [0.12, 0.06], n_zones: [2, 1]}
+    # E10 regional festival surge (hard negative): triangular demand surge in n_zones zones on n_subcats
+    # subcategories, announced in dim_calendar; platforms pre-stock (inbound x prestock_mult).
+    E10: {duration: [5, 3],  surge: [0.50, 0.20], n_zones: [2, 1], prestock_mult: [1.35, 1.35], n_subcats: [3, 2]}
 
 # ---------------------------------------------------------------- calibration targets
 # Validator checks that each marginal lies in [lo, hi]. These are assumed plausible

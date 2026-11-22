@@ -104,6 +104,14 @@ def invariants(res: SimResult) -> list[Check]:
         keys = _key(bad["day_index"].to_numpy(), bad["platform_id"].to_numpy(), bad["pincode_id"].to_numpy()) * 10 + k
         unexplained += sum(int(x) not in stale_keys for x in keys)
     out.append(_flag("unlisted_rows_unavailable_except_stale", unexplained == 0))
+    # planted-event answer key sanity
+    ev, ef = T["latent_events"], T["latent_effects"]
+    out.append(_flag("events_unique_ids", bool(ev["event_id"].is_unique)))
+    out.append(_flag("events_window_valid", bool((ev["end_day"] >= ev["start_day"]).all() and (ev["start_day"] >= 0).all())))
+    out.append(_flag("events_parent_exists", bool(ev["causal_parent_event_id"].dropna().isin(ev["event_id"]).all())))
+    out.append(_flag("effects_reference_events", bool(ef["event_id"].isin(ev["event_id"]).all())))
+    out.append(_flag("effects_window_valid", bool((ef["window_end"] >= ef["window_start"]).all())))
+    out.append(_flag("hard_negatives_are_E4_E8_E10", set(ev.loc[ev["is_hard_negative"], "type"]) <= {"E4", "E8", "E10"}))
     return out
 
 

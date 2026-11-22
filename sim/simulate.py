@@ -42,8 +42,9 @@ class SimResult:
 
 def _check_mods(w: World, m: DayModifiers) -> None:
     exp = {"demand_mult": (w.n_cells,), "price_mult": (w.n_cells,), "supply_fill_mult": (w.n_series,),
-           "stock_destroy_frac": (w.n_series,), "ad_bid_mult": (w.P, w.B),
-           "listing_suppress": (w.n_cells,), "scrape_blackout": (w.P, w.L)}
+           "stock_destroy_frac": (w.n_series,), "ad_bid_mult": (w.P, w.L, w.B),
+           "listing_suppress": (w.n_cells,), "hide_available": (w.n_cells,), "promo_flag": (w.n_cells,),
+           "scrape_blackout": (w.P, w.L)}
     for name, shape in exp.items():
         arr = getattr(m, name)
         if arr is not None and np.shape(arr) != shape:
@@ -63,13 +64,37 @@ class _Acc:
         return np.concatenate([c[key] for c in self.chunks[table]])
 
 
-def simulate(cfg: WorldConfig, n_days: int | None = None, hook: EventHook | None = None) -> SimResult:
+def build_hook(cfg: WorldConfig, w: World) -> EventHook:
+    """Default hook for a config: the planted-event injector if cfg.events.enabled, else the baseline."""
+    if cfg.events.enabled:
+        from .injector import EventInjector  # local import: injector depends on world/config only
+        return EventInjector(w, cfg)
+    return NullHook()
+
+
+def simulate(cfg: WorldConfig, n_days: int | None = None, hook: EventHook | None = None,
+             counterfactual: bool = True) -> SimResult:
+    """Run the world. With the event injector, also runs counterfactual worlds (baseline, and each E6
+    component alone) to fill latent_effects. counterfactual=False skips them (answer key left empty)."""
     cfg.validate()
     n = cfg.n_days if n_days is None else n_days
     if n < 1:
         raise ValueError("n_days must be >= 1")
-    hook = hook or NullHook()
     w = build_world(cfg)
+    hook = hook if hook is not None else build_hook(cfg, w)
+    if hasattr(hook, "bind_horizon"):
+        hook.bind_horizon(n)
+    res = _run(cfg, w, n, hook)
+    if counterfactual and getattr(hook, "needs_counterfactuals", False):
+        base = _run(cfg, w, n, NullHook())
+        comps = {tag: _run(cfg, w, n, hook.restricted(tag)) for tag in hook.component_tags()}
+        hook.compute_effects(res, base, comps)
+        res.tables["latent_events"] = coerce(hook.latent_events(), "latent_events")
+        res.tables["latent_effects"] = coerce(hook.latent_effects(), "latent_effects")
+    return res
+
+
+def _run(cfg: WorldConfig, w: World, n: int, hook: EventHook) -> SimResult:
     eng, vis = Engine(w), Visibility(w)
     st = eng.init_state()
     acc = _Acc()
@@ -91,9 +116,12 @@ def simulate(cfg: WorldConfig, n_days: int | None = None, hook: EventHook | None
         if mods.listing_suppress is not None:
             unlist = unlist | mods.listing_suppress
         listed_today = ~unlist
+        buyable = listed_today if mods.hide_available is None else listed_today & ~mods.hide_available
         promo_cell = promo_active[w.cell_plat, w.cell_sku]
-        lam = eng.demand_rate(dow, season, price_cell, promo_cell, listed_today, st, mods)
-        dem, sold, avail, onhand = eng.run_day_inventory(day, lam, listed_today, st, mods)
+        if mods.promo_flag is not None:
+            promo_cell = promo_cell | mods.promo_flag
+        lam = eng.demand_rate(dow, season, price_cell, promo_cell, buyable, st, mods)
+        dem, sold, avail, onhand = eng.run_day_inventory(day, lam, buyable, st, mods)
         eng.place_orders(day, sold, st)
         slots, sov = vis.run(day, avail, listed_today, price_cell, st.conv_ema, mods)
         prev_last = st.last_avail
@@ -174,7 +202,7 @@ def _dates(cfg: WorldConfig, day_index: np.ndarray) -> pd.Series:
 
 
 def _assemble(cfg: WorldConfig, w: World, acc: _Acc, hook: EventHook) -> dict[str, pd.DataFrame]:
-    t: dict[str, pd.DataFrame] = {k: coerce(getattr(w, k).copy(), k) for k in DIMS}
+    t: dict[str, pd.DataFrame] = {k: coerce(getattr(w, k).copy(), k) for k in DIMS if k != "dim_calendar"}
     # ---- fact_listing_daily (nullable availability: NA == scrape failed, never filled)
     c = acc.chunks["fact_listing_daily"]
     cat = lambda k, ax=0: np.concatenate([x[k] for x in c], axis=ax)  # noqa: E731
@@ -201,6 +229,21 @@ def _assemble(cfg: WorldConfig, w: World, acc: _Acc, hook: EventHook) -> dict[st
         d = pd.DataFrame(cols)
         d["date"] = _dates(cfg, d["day_index"].to_numpy())
         t[name] = coerce(d, name)
+    t["dim_calendar"] = coerce(_calendar(cfg, hook), "dim_calendar")
     t["latent_events"] = coerce(hook.latent_events(), "latent_events")
     t["latent_effects"] = coerce(hook.latent_effects(), "latent_effects")
     return t
+
+
+def _calendar(cfg: WorldConfig, hook: EventHook) -> pd.DataFrame:
+    """Public festival calendar: baseline festivals (all zones) plus planned regional festivals."""
+    rows = []
+    for f in cfg.demand.festivals:
+        fd = pd.Timestamp(f.date)
+        for off in range(-f.window_days + 1, f.window_days):
+            rows.append((fd + pd.Timedelta(days=off), f.name, pd.NA, "baseline"))
+    base = pd.DataFrame(rows, columns=["date", "festival_name", "scope_zone_id", "kind"])
+    reg = hook.calendar_rows().assign(kind="regional")
+    out = pd.concat([base, reg[["date", "festival_name", "scope_zone_id", "kind"]]], ignore_index=True)
+    out["scope_zone_id"] = out["scope_zone_id"].astype("Int8")
+    return out.sort_values(["date", "festival_name", "scope_zone_id"], na_position="first").reset_index(drop=True)

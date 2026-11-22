@@ -25,6 +25,10 @@ DIMS: dict[str, dict[str, str]] = {
     "dim_dark_store": {"dark_store_id": "int16", "name": "string", "platform_id": "int8", "zone_id": "int8",
                        "capacity_index": "float64", "supplier_lead_time_days": "int8"},
     "dim_query": {"query_id": "int8", "query_text": "string", "subcategory": "string"},
+    # PUBLIC festival calendar (baseline festivals + regional festivals). Known covariate: a
+    # seasonality-aware detector should use it, which is what makes E10 a hard negative.
+    "dim_calendar": {"date": "datetime64[ns]", "festival_name": "string", "scope_zone_id": "Int8",
+                     "kind": "string"},
 }
 
 OBSERVED: dict[str, dict[str, str]] = {
@@ -57,10 +61,15 @@ LATENT: dict[str, dict[str, str]] = {
         "day_index": "int16", "date": "datetime64[ns]", "platform_id": "int8", "pincode_id": "int16",
         "snapshot": "int8", "was_stale": "bool"},
     "latent_events": {
-        "event_id": "int32", "type": "string", "start_day": "int16", "end_day": "int16",
-        "scope_platform": "string", "scope_pincodes": "string", "scope_skus": "string",
-        "magnitude": "float64", "causal_parent_event_id": "Int32", "is_hard_negative": "bool"},
-    "latent_effects": {"event_id": "int32", "metric": "string", "true_delta": "float64"},
+        "event_id": "int32", "type": "string", "name": "string", "start_day": "int16", "end_day": "int16",
+        "tier": "string", "difficulty": "float64", "scope_platform": "string", "scope_zones": "string",
+        "scope_pincodes": "string", "scope_stores": "string", "scope_skus": "string", "scope_brands": "string",
+        "magnitude": "float64", "magnitude_unit": "string", "causal_parent_event_id": "Int32",
+        "is_hard_negative": "bool", "should_alert": "bool", "params": "string"},
+    # true_delta = (event world) - (counterfactual baseline world) over the platform x pincode scope
+    # and [window_start, window_end]; see sim/effects.py for metric definitions.
+    "latent_effects": {"event_id": "int32", "metric": "string", "true_delta": "float64",
+                       "window_start": "int16", "window_end": "int16"},
 }
 
 DAY_INDEXED = [t for t, c in {**OBSERVED, **LATENT}.items() if "day_index" in c]
@@ -68,7 +77,7 @@ ALL_TABLES = {**DIMS, **OBSERVED, **LATENT}
 
 # Column names that must never appear in an observed table (leak guard used by tests).
 LATENT_COLUMNS = {"true_demand_units", "sold_units", "lost_units", "on_hand_units", "was_stale",
-                  "is_hard_negative", "true_delta"}
+                  "is_hard_negative", "should_alert", "true_delta", "causal_parent_event_id"}
 
 
 def coerce(df, table: str):

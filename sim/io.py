@@ -33,12 +33,20 @@ def frame_hash(df: pd.DataFrame) -> str:
     return h.hexdigest()
 
 
+# Horizon summaries: describe the whole run, so they legitimately change when history is extended.
+_SUMMARY_TABLES = {"latent_events", "latent_effects"}
+
+
 def table_hashes(tables: dict[str, pd.DataFrame], up_to_day: int | None = None) -> dict[str, str]:
-    """Hash every table; with up_to_day, day-indexed tables are restricted to day_index < up_to_day."""
+    """Hash every table. With up_to_day (prefix comparison), day-indexed tables are restricted to
+    day_index < up_to_day and the horizon-summary tables (latent_events/latent_effects) are skipped."""
     out = {}
     for name, df in tables.items():
-        if up_to_day is not None and name in DAY_INDEXED:
-            df = df[df["day_index"] < up_to_day]
+        if up_to_day is not None:
+            if name in _SUMMARY_TABLES:
+                continue
+            if name in DAY_INDEXED:
+                df = df[df["day_index"] < up_to_day]
         out[name] = frame_hash(df.reset_index(drop=True))
     return out
 

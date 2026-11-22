@@ -77,11 +77,10 @@ class Visibility:
         snaps = ad.snapshots
         rng = rng_for(w.cfg.seed, "group", day, "auction")
         pacing = rng.lognormal(0.0, ad.pacing_sigma, (len(snaps), w.P, w.B))
-        p_part = np.clip(self.partic[None, :, None] * self.plat_ad[:, None, None], 0, 1)   # [P,B,1]
-        part = rng.random((w.P, w.B, w.Q)) < p_part
+        u_part = rng.random((w.P, w.B, w.Q))
         g_sp = rng.gumbel(size=(len(snaps), G, Cm)) * ad.gumbel_sponsored
         g_or = rng.gumbel(size=(len(snaps), G, Cm)) * ad.gumbel_organic
-        bidmult = mods.ad_bid_mult if mods.ad_bid_mult is not None else np.ones((w.P, w.B))
+        bidmult = mods.ad_bid_mult if mods.ad_bid_mult is not None else np.ones((w.P, w.L, w.B))
         n_sp = len(ad.sponsored_positions)
         out: dict[int, dict[str, np.ndarray]] = {}
         sov_acc = np.zeros((G, w.B))
@@ -94,8 +93,11 @@ class Visibility:
                 warnings.simplefilter("ignore", RuntimeWarning)
                 med = np.nanmedian(ppk, axis=1, keepdims=True)
             bid = self.strength[self.brand_g] * pacing[si][self.gp_plat[:, None], self.brand_g] \
-                * bidmult[self.gp_plat[:, None], self.brand_g]
-            active = part[self.gp_plat[:, None], self.brand_g, self.gq[:, None]]
+                * bidmult[self.gp_plat[:, None], self.gp_pin[:, None], self.brand_g]
+            # a bid multiplier also raises participation (a takeover means showing up everywhere)
+            p_act = np.clip(self.partic[self.brand_g] * self.plat_ad[self.gp_plat[:, None]]
+                            * bidmult[self.gp_plat[:, None], self.gp_pin[:, None], self.brand_g], 0.0, 1.0)
+            active = u_part[self.gp_plat[:, None], self.brand_g, self.gq[:, None]] < p_act
             with np.errstate(divide="ignore", invalid="ignore"):
                 sp = np.where(shown & av & active, np.log(bid) + 0.5 * self.log_pop + g_sp[si], -np.inf)
                 org = np.where(

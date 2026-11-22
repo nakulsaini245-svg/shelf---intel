@@ -28,6 +28,7 @@ def tiny_cfg():
     raw["inventory"]["warmup_days"] = 4
     raw["observation"].update(p_timeout=0.08, evening_extra=0.06, p_stale=0.03)  # more failures to exercise
     raw["targets"] = {}
+    raw["events"] = {"enabled": False}  # Week 1 tests exercise the baseline world only
     return config_from_dict(raw)
 
 
@@ -61,7 +62,7 @@ def test_different_seed_changes_data(tiny_cfg, res8):
 
 def test_append_day_leaves_history_untouched(tiny_cfg, res8):
     res9 = simulate(tiny_cfg, n_days=9)
-    assert table_hashes(res8.tables) == table_hashes(res9.tables, up_to_day=8)
+    assert table_hashes(res8.tables, up_to_day=8) == table_hashes(res9.tables, up_to_day=8)
     for t in DAY_INDEXED:  # the new day really exists
         assert res9.tables[t]["day_index"].max() == 8
 

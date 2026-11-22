@@ -72,7 +72,8 @@ class Engine:
         self.cell_el = self.el[w.cell_sku]
         self.cell_ref = w.ref_price[w.cell_plat, w.cell_sku]
         self.gid = w.cell_pair * w.Q + self.cell_q
-        self.n_g = np.bincount(self.gid, minlength=w.n_pairs * w.Q)
+        self.cell_pop = w.sku_pop[w.cell_sku]
+        self.w_g = np.bincount(self.gid, weights=self.cell_pop, minlength=w.n_pairs * w.Q)  # popularity mass
         rel = np.array([p.restock_reliability for p in c.platforms])
         self.s_rel = rel[w.series_plat]
         self.s_case = w.sku_case[w.series_sku]
@@ -147,9 +148,10 @@ class Engine:
         dm = self.cfg.demand
         ratio = price_cell / self.cell_ref
         own = ratio ** (-self.cell_el)
-        n = self.n_g[self.gid]
-        s_g = np.bincount(self.gid, weights=ratio, minlength=len(self.n_g))
-        comp = np.where(n > 1, (s_g[self.gid] - ratio) / np.maximum(n - 1, 1), 1.0)
+        wp = self.cell_pop
+        den = self.w_g[self.gid] - wp
+        s_g = np.bincount(self.gid, weights=ratio * wp, minlength=len(self.w_g))
+        comp = np.where(den > 1e-9, (s_g[self.gid] - ratio * wp) / np.maximum(den, 1e-9), 1.0)
         cross = comp ** (dm.cross_elasticity_ratio * self.cell_el)
         lift = np.where(promo_cell, dm.promo_display_lift, 1.0)
         sov = np.ones(self.w.n_cells)
@@ -173,7 +175,7 @@ class Engine:
         rng = rng_for(self.seed, "cell", day, "demand")
         r = self.cfg.demand.nb_dispersion
         lam_k = lam[None, :] * self.period_w[:, None]
-        dem = rng.poisson(rng.gamma(r, lam_k / r)).astype(np.int64)            # [4,C] neg-binomial
+        dem = _nb_inverse(rng.random((4, C)), lam_k, r)                        # [4,C] neg-binomial, CRN
 
         arrive = st.pipe[day % RING].copy()
         st.pipe[day % RING] = 0
@@ -183,7 +185,8 @@ class Engine:
         if mods.stock_destroy_frac is not None:
             st.on_hand = st.on_hand - np.floor(st.on_hand * mods.stock_destroy_frac).astype(np.int64)
         rs = rng_for(self.seed, "series", day, "stock")
-        st.on_hand = st.on_hand - rs.binomial(st.on_hand, self.s_wo)           # shelf-life write-off
+        # shelf-life write-off: expectation with stochastic rounding (fixed uniforms => common random numbers)
+        st.on_hand = st.on_hand - np.floor(st.on_hand * self.s_wo + rs.random(S)).astype(np.int64)
         u_top = rs.random(S)
 
         sold_total = np.zeros(C, dtype=np.int64)
@@ -215,6 +218,29 @@ class Engine:
         qty = np.ceil(need / self.s_case) * self.s_case
         filled = np.floor(qty * fill).astype(np.int64)
         st.pipe[(day + self.s_lead + delay) % RING, np.arange(S)] += filled
+
+
+def _nb_inverse(u: np.ndarray, mean: np.ndarray, r: float) -> np.ndarray:
+    """Negative-binomial(r, mean) quantile at u, by inversion.
+
+    Uses exactly one uniform per draw regardless of the parameters, so two worlds that differ only in
+    `mean` still share their random numbers (common random numbers). numpy's poisson/binomial samplers
+    consume a parameter-dependent number of bits, which would desynchronise every later draw and make
+    counterfactual differences noisy.
+    """
+    q = r / (r + mean)
+    pmf = q ** r                                   # P(0)
+    cdf = pmf.copy()
+    k = np.zeros(u.shape, dtype=np.int64)
+    mx = float(mean.max())
+    for i in range(int(mx + 12.0 * np.sqrt(mx * (1.0 + mx / r))) + 12):
+        todo = u > cdf
+        if not todo.any():
+            break
+        k += todo
+        pmf = pmf * ((i + r) / (i + 1.0)) * (1.0 - q)
+        cdf = cdf + pmf
+    return k
 
 
 def _ration(dem: np.ndarray, series: np.ndarray, on_hand: np.ndarray, S: int) -> np.ndarray:

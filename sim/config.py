@@ -154,6 +154,18 @@ class ObservationCfg:
 
 
 @dataclass(frozen=True)
+class EventsCfg:
+    enabled: bool = False
+    horizon_days: int = 90            # planning horizon, independent of how many days are simulated
+    min_start_day: int = 10           # leave a clean baseline prefix for detectors
+    tail_days: int = 5                # effect measurement continues this long after an event ends
+    min_gap_days: int = 2             # extra spacing between events that share platform and zone
+    tiers: list[float] = field(default_factory=lambda: [0.0, 0.5, 1.0])   # difficulty positions
+    counts: dict[str, int] = field(default_factory=dict)
+    knobs: dict[str, dict[str, list[float]]] = field(default_factory=dict)  # [easy, hard] endpoints
+
+
+@dataclass(frozen=True)
 class WorldConfig:
     version: int
     seed: int
@@ -172,6 +184,7 @@ class WorldConfig:
     ads: AdsCfg
     observation: ObservationCfg
     targets: dict[str, list[float]] = field(default_factory=dict)
+    events: EventsCfg = field(default_factory=EventsCfg)
 
     # ------------------------------------------------------------ helpers
     @property
@@ -235,6 +248,7 @@ def config_from_dict(raw: Mapping[str, Any]) -> WorldConfig:
         ads=_make(AdsCfg, raw.pop("ads"), "ads"),
         observation=_make(ObservationCfg, raw.pop("observation"), "observation"),
         targets=raw.pop("targets", {}),
+        events=_make(EventsCfg, raw.pop("events", {}), "events"),
     )
     if raw:
         raise ValueError(f"unknown top-level key(s): {sorted(raw)}")
