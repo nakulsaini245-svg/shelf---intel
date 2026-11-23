@@ -1,0 +1,163 @@
+{
+  "config_digest": "3f1b674dec220724",
+  "seed": 20261121,
+  "n_incidents": 38,
+  "top_k": 10,
+  "oracle_top_k_rs": 152648.0,
+  "detection": {
+    "seasonal_full (Week 2)": {
+      "n_should_alert": 21,
+      "recall_all": 0.9047619047619048,
+      "n_above_floor": 20,
+      "recall_above_floor": 0.95,
+      "n_below_floor": 1,
+      "recall_below_floor": 0.0,
+      "median_delay_above_floor": 1.0,
+      "mean_delay_above_floor": 2.210526315789474,
+      "recall_above_floor_post_warmup": 0.9411764705882353,
+      "business_alarms": 58,
+      "alarm_precision": 0.6724137931034483,
+      "background_false_alarms": 19,
+      "series_days": 37440,
+      "false_alarms_per_1000_series_days": 0.5074786324786325,
+      "background_by_signal": {
+        "avail": 2,
+        "focal_units": 4,
+        "price": 5,
+        "share": 8
+      },
+      "false_alert_rate_E4": 0.0,
+      "false_alert_rate_E8": 0.0,
+      "false_alert_rate_E10": 0.0,
+      "e8_dq_recall": 0.6666666666666666,
+      "e8_dq_median_delay": 1.0
+    },
+    "conformal": {
+      "n_should_alert": 21,
+      "recall_all": 0.7619047619047619,
+      "n_above_floor": 20,
+      "recall_above_floor": 0.8,
+      "n_below_floor": 1,
+      "recall_below_floor": 0.0,
+      "median_delay_above_floor": 1.0,
+      "mean_delay_above_floor": 2.375,
+      "recall_above_floor_post_warmup": 0.8235294117647058,
+      "business_alarms": 43,
+      "alarm_precision": 0.6511627906976745,
+      "background_false_alarms": 15,
+      "series_days": 37440,
+      "false_alarms_per_1000_series_days": 0.40064102564102566,
+      "background_by_signal": {
+        "avail": 2,
+        "share": 13
+      },
+      "false_alert_rate_E4": 0.0,
+      "false_alert_rate_E8": 0.0,
+      "false_alert_rate_E10": 0.5,
+      "e8_dq_recall": 0.6666666666666666,
+      "e8_dq_median_delay": 1.0
+    }
+  },
+  "coverage": [
+    {
+      "signal": "scrape",
+      "n": 1063,
+      "coverage": 0.980244590780809
+    },
+    {
+      "signal": "avail",
+      "n": 1063,
+      "coverage": 0.9614299153339605
+    },
+    {
+      "signal": "focal_units",
+      "n": 1063,
+      "coverage": 0.9698965192850423
+    },
+    {
+      "signal": "price",
+      "n": 5315,
+      "coverage": 0.9574788334901223
+    },
+    {
+      "signal": "share",
+      "n": 8504,
+      "coverage": 0.9626058325493885
+    }
+  ],
+  "ranking": {
+    "ML: net benefit (Rs)": {
+      "spearman_vs_true": 0.4535118215355909,
+      "capture_at_k": 0.6781942770295057,
+      "precision_at_k": 0.7,
+      "realized_net_rs_at_k": -13005.885714285716,
+      "wasted_actions_at_k": 3
+    },
+    "ML: net benefit lower bound": {
+      "spearman_vs_true": 0.4392577660456715,
+      "capture_at_k": 0.5852549656726587,
+      "precision_at_k": 0.6,
+      "realized_net_rs_at_k": -13539.47857142857,
+      "wasted_actions_at_k": 4
+    },
+    "ML: est. lost Rs (no cost)": {
+      "spearman_vs_true": 0.41781984794602484,
+      "capture_at_k": 0.5902075362926471,
+      "precision_at_k": 0.6,
+      "realized_net_rs_at_k": -49053.885714285716,
+      "wasted_actions_at_k": 4
+    },
+    "conformal alarm count": {
+      "spearman_vs_true": 0.3144824644926321,
+      "capture_at_k": 0.6524553220481106,
+      "precision_at_k": 0.8,
+      "realized_net_rs_at_k": -24272.707142857147,
+      "wasted_actions_at_k": 2
+    },
+    "conformal peak strength": {
+      "spearman_vs_true": 0.4815907379375921,
+      "capture_at_k": 0.6106008594937372,
+      "precision_at_k": 0.8,
+      "realized_net_rs_at_k": -59606.0,
+      "wasted_actions_at_k": 2
+    },
+    "Week 2 incidents by z strength": {
+      "spearman_vs_true": 0.23639609642376183,
+      "capture_at_k": 0.305369215449924,
+      "precision_at_k": 0.5,
+      "realized_net_rs_at_k": -113060.40000000001,
+      "wasted_actions_at_k": 5
+    }
+  },
+  "policy": {
+    "ml_net_benefit_gt0": {
+      "n_actions": 7,
+      "precision": 0.7142857142857143,
+      "wasted_actions": 2,
+      "realized_net_rs": -931.0857142857158,
+      "missed_true_rs": 82081.0
+    },
+    "act_on_all_incidents": {
+      "n_actions": 38,
+      "precision": 0.42105263157894735,
+      "wasted_actions": 22,
+      "realized_net_rs": -379354.15714285715,
+      "missed_true_rs": 0.0
+    },
+    "week2_all_incidents": {
+      "n_actions": 50,
+      "precision": 0.38,
+      "wasted_actions": 31,
+      "realized_net_rs": -420413.59285714285,
+      "missed_true_rs": 0.0
+    }
+  },
+  "impact": {
+    "n": 16,
+    "median_est_over_true": 1.186411465892598,
+    "interval_covers_true": 1.0,
+    "spearman_units": 0.4889548748973952
+  },
+  "tol": 1.25,
+  "alpha": 0.05
+}
